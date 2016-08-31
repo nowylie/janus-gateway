@@ -232,7 +232,7 @@ struct janus_transport_callbacks {
 	 * @param[in] token The auth token to validate
 	 * @returns TRUE if the auth token is valid, FALSE otherwise */
 	gboolean (* const is_auth_token_valid)(janus_transport *plugin, const char *token);
-
+	json_t *(* const janus_info)(const char *transaction);
 };
 
 /*! \brief The hook that transport plugins need to implement to be created from the gateway */
