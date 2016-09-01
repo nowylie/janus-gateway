@@ -238,6 +238,7 @@ struct janus_transport_callbacks {
 	int (* const destroy_session)(guint64 session_id);
 	guint64 (* const attach_handle)(guint64 session_id, const char *plugin_package, const char *token, int *err); 
 	int (* const detach_handle)(guint64 session_id, guint64 handle_id);
+	int (* const hangup_handle)(guint64 session_id, guint64 handle_id);
 };
 
 /*! \brief The hook that transport plugins need to implement to be created from the gateway */

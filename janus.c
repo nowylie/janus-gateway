@@ -297,6 +297,7 @@ void janus_transport_update_session_activity(guint64 session_id);
 int janus_transport_destroy_session(guint64 session_id);
 guint64 janus_transport_attach_handle(guint64 session_id, const char *plugin_package, const char *token, int *err); 
 int janus_transport_detach_handle(guint64 session_id, guint64 handle_id);
+int janus_transport_hangup_handle(guint64 session_id, guint64 handle_id);
 
 static janus_transport_callbacks janus_handler_transport =
 	{
@@ -311,7 +312,8 @@ static janus_transport_callbacks janus_handler_transport =
 		.update_session_activity = janus_transport_update_session_activity,
 		.destroy_session = janus_transport_destroy_session,
 		.attach_handle = janus_transport_attach_handle,
-		.detach_handle = janus_transport_detach_handle
+		.detach_handle = janus_transport_detach_handle,
+		.hangup_handle = janus_transport_hangup_handle
 	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -2563,6 +2565,18 @@ int janus_transport_detach_handle(guint64 session_id, guint64 handle_id) {
 
 	if (err != 0) return JANUS_ERROR_PLUGIN_DETACH;
 	
+	return 0;
+}
+
+int janus_transport_hangup_handle(guint64 session_id, guint64 handle_id) {
+	janus_session *session = janus_session_find(session_id);
+	if (session == NULL) return JANUS_ERROR_SESSION_NOT_FOUND;
+
+	janus_ice_handle *handle = janus_ice_handle_find(session, handle_id);
+	if (handle == NULL) return JANUS_ERROR_HANDLE_NOT_FOUND;
+	if (handle->app == NULL || handle->app_handle == NULL) return JANUS_ERROR_PLUGIN_DETACH;
+
+	janus_ice_webrtc_hangup(handle);
 	return 0;
 }
 
