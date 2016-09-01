@@ -295,6 +295,7 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 guint64 janus_transport_create_session(janus_transport *plugin, void *transport, guint64 session_id, int *err);
 void janus_transport_update_session_activity(guint64 session_id);
 int janus_transport_destroy_session(guint64 session_id);
+guint64 janus_transport_attach_handle(guint64 session_id, const char *plugin_package, const char *token, int *err); 
 
 static janus_transport_callbacks janus_handler_transport =
 	{
@@ -307,7 +308,8 @@ static janus_transport_callbacks janus_handler_transport =
 		.janus_info = janus_info,
 		.create_session = janus_transport_create_session,
 		.update_session_activity = janus_transport_update_session_activity,
-		.destroy_session = janus_transport_destroy_session
+		.destroy_session = janus_transport_destroy_session,
+		.attach_handle = janus_transport_attach_handle
 	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -2504,6 +2506,44 @@ int janus_transport_destroy_session(guint64 session_id) {
 		session->source->transport->session_over(session->source->instance, session->session_id, FALSE);
 
 	return 0;
+}
+
+guint64 janus_transport_attach_handle(guint64 session_id, const char *plugin_package, const char *token, int *err) {
+	janus_session *session = janus_session_find(session_id);
+	if (session == NULL) {
+		*err = JANUS_ERROR_SESSION_NOT_FOUND;
+		return 0;
+	}
+
+	janus_plugin *plugin = janus_plugin_find(plugin_package);
+	if (plugin == NULL) {
+		*err = JANUS_ERROR_PLUGIN_NOT_FOUND;
+		return 0;
+	}
+
+	if (janus_auth_is_enabled() && !janus_auth_check_plugin(token, plugin)) {
+		*err = JANUS_ERROR_UNAUTHORIZED_PLUGIN;
+		return 0;
+	}
+
+	janus_ice_handle *handle = janus_ice_handle_create(session);
+	if (handle == NULL) {
+		*err = JANUS_ERROR_UNKNOWN;
+		return 0;
+	}
+
+	guint64 handle_id = handle->handle_id;
+	*err = janus_ice_handle_attach_plugin(session, handle_id, plugin);
+	if (*err != 0) {
+		janus_ice_handle_destroy(session, handle_id);
+		janus_mutex_lock(&session->mutex);
+		g_hash_table_remove(session->ice_handles, &handle_id);
+		janus_mutex_unlock(&session->mutex);
+		JANUS_LOG(LOG_ERR, "Couldn't attach to plugin %s, error '%d'\n", plugin_package, *err);
+		return 0;
+	}
+
+	return handle_id;
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {
