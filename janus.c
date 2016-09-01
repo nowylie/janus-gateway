@@ -294,6 +294,7 @@ gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
 guint64 janus_transport_create_session(janus_transport *plugin, void *transport, guint64 session_id, int *err);
 void janus_transport_update_session_activity(guint64 session_id);
+int janus_transport_destroy_session(guint64 session_id);
 
 static janus_transport_callbacks janus_handler_transport =
 	{
@@ -305,7 +306,8 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
 		.janus_info = janus_info,
 		.create_session = janus_transport_create_session,
-		.update_session_activity = janus_transport_update_session_activity
+		.update_session_activity = janus_transport_update_session_activity,
+		.destroy_session = janus_transport_destroy_session
 	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -2480,6 +2482,28 @@ void janus_transport_update_session_activity(guint64 session_id) {
 
 	/* Update the last activity timer */
 	session->last_activity = janus_get_monotonic_time();
+}
+
+int janus_transport_destroy_session(guint64 session_id) {
+	janus_session *session = janus_session_find(session_id);
+	if (session == NULL) return JANUS_ERROR_SESSION_NOT_FOUND;
+
+	/* Schedule the session for deletion */
+	session->destroy = 1;
+	janus_mutex_lock(&sessions_mutex);
+	g_hash_table_remove(sessions, &session->session_id);
+	g_hash_table_insert(old_sessions, janus_uint64_dup(session->session_id), session);
+	GSource *timeout_source = g_timeout_source_new_seconds(3);
+	g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
+	g_source_attach(timeout_source, sessions_watchdog_context);
+	g_source_unref(timeout_source);
+	janus_mutex_unlock(&sessions_mutex);
+
+	/* Notify the source that the session has been destroyed */
+	if(session->source && session->source->transport)
+		session->source->transport->session_over(session->source->instance, session->session_id, FALSE);
+
+	return 0;
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {

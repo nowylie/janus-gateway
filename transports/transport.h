@@ -235,6 +235,7 @@ struct janus_transport_callbacks {
 	json_t *(* const janus_info)(const char *transaction);
 	guint64 (* const create_session)(janus_transport *plugin, void *transport, guint64 session_id, int *err);
 	void (* const update_session_activity)(guint64 session_id);
+	int (* const destroy_session)(guint64 session_id);
 };
 
 /*! \brief The hook that transport plugins need to implement to be created from the gateway */
