@@ -292,6 +292,7 @@ gboolean janus_transport_is_api_secret_needed(janus_transport *plugin);
 gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
 gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char *token);
+guint64 janus_transport_create_session(janus_transport *plugin, void *transport, guint64 session_id, int *err);
 
 static janus_transport_callbacks janus_handler_transport =
 	{
@@ -301,7 +302,8 @@ static janus_transport_callbacks janus_handler_transport =
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
 		.is_auth_token_valid = janus_transport_is_auth_token_valid,
-		.janus_info = janus_info
+		.janus_info = janus_info,
+		.create_session = janus_transport_create_session
 	};
 GThreadPool *tasks = NULL;
 void janus_transport_task(gpointer data, gpointer user_data);
@@ -2440,6 +2442,34 @@ gboolean janus_transport_is_auth_token_valid(janus_transport *plugin, const char
 	if(!janus_auth_is_enabled())
 		return TRUE;
 	return token && janus_auth_check_token(token);
+}
+
+guint64 janus_transport_create_session(janus_transport *plugin, void *transport, guint64 session_id, int *err) {
+	// Did the client provide a session_id to use?
+	if (session_id != 0 && janus_session_find(session_id) != NULL) {
+		// Error, session_id is already in use
+		*err = JANUS_ERROR_SESSION_CONFLICT;
+		return 0;
+	}
+
+	// Create the session
+	janus_session *session = janus_session_create(session_id);
+	if(session == NULL) {
+		*err = JANUS_ERROR_UNKNOWN; // Memory error?
+		return 0;
+	}
+
+	// Pass session_id back to transport plugin
+	session_id = session->session_id;
+
+	// Store info about the transport plugin in session->source
+	// FIXME is there a reason we use the request struct to store this information?
+	session->source = janus_request_new(plugin, transport, NULL, FALSE, NULL);
+
+	/* Notify the source that a new session has been created */
+	plugin->session_created(transport, session->session_id);
+
+	return session_id;
 }
 
 void janus_transport_task(gpointer data, gpointer user_data) {
